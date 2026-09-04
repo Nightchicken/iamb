@@ -1,11 +1,11 @@
 //! Audio device selection for calls.
 //!
 //! LiveKit's platform audio device module owns the microphone and speaker, so
-//! everything here is a thin, human-friendly layer over ["PlatformAudio"]:
+//! everything here is a thin, human-friendly layer over [`PlatformAudio`]:
 //! turning its device lists into something printable, resolving what the user
-//! typed at ":call device" into a device id, and remembering the choice.
+//! typed at `:call device` into a device id, and remembering the choice.
 //!
-//! Only compiled when the "voip" feature is enabled.
+//! Only compiled when the `voip` feature is enabled.
 
 use anyhow::{Result, anyhow};
 use livekit::PlatformAudio;
@@ -24,7 +24,7 @@ pub enum DeviceKind {
 }
 
 impl DeviceKind {
-    /// The word the user types for this kind at ":call device".
+    /// The word the user types for this kind at `:call device`.
     pub fn keyword(&self) -> &'static str {
         match self {
             DeviceKind::Microphone => "mic",
@@ -47,11 +47,11 @@ impl DeviceKind {
 /// and a name is what the user recognises if they ever open the file.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct DevicePreferences {
-    /// The chosen microphone, or "None" to use the system default.
+    /// The chosen microphone, or `None` to use the system default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub microphone: Option<String>,
 
-    /// The chosen speaker, or "None" to use the system default.
+    /// The chosen speaker, or `None` to use the system default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub speaker: Option<String>,
 }
@@ -80,7 +80,7 @@ impl DevicePreferences {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct Device {
     /// Position in the platform's device list, and the only handle the audio
-    /// device module will actually act on. See ["switch"].
+    /// device module will actually act on. See [`switch`].
     index: usize,
 
     /// Human-readable name. Not necessarily unique: two identical USB
@@ -139,9 +139,9 @@ pub fn format_listing(audio: &PlatformAudio, prefs: &DevicePreferences) -> Strin
         }
     }
 
-    out.push_str("\nSelect with ":call device ");
+    out.push_str("\nSelect with `:call device ");
     out.push_str(DeviceKind::Microphone.keyword());
-    out.push_str(" <index|name>".\n");
+    out.push_str(" <index|name>`.\n");
 
     out
 }
@@ -149,13 +149,13 @@ pub fn format_listing(audio: &PlatformAudio, prefs: &DevicePreferences) -> Strin
 /// Find the device the user meant.
 ///
 /// A bare number picks by index; anything else matches a device name, exactly if
-/// possible and otherwise as a case-insensitive substring so that ":call device
-/// mic yeti" does the obvious thing.
+/// possible and otherwise as a case-insensitive substring so that `:call device
+/// mic yeti` does the obvious thing.
 fn resolve(audio: &PlatformAudio, kind: DeviceKind, spec: &str) -> Result<Device> {
     resolve_in(&enumerate(audio, kind), kind, spec)
 }
 
-/// The matching ru les behind ["resolve"], over an already enumerated list.
+/// The matching rules behind [`resolve`], over an already enumerated list.
 fn resolve_in(devices: &[Device], kind: DeviceKind, spec: &str) -> Result<Device> {
     if let Ok(wanted) = spec.parse::<usize>() {
         return devices
@@ -189,19 +189,20 @@ fn resolve_in(devices: &[Device], kind: DeviceKind, spec: &str) -> Result<Device
 /// hot-swapping it if a call is already running.
 ///
 /// This goes to the audio device module directly rather than through
-/// ["PlatformAudio::switch_recording_device"], because that API takes a device
+/// [`PlatformAudio::switch_recording_device`], because that API takes a device
 /// GUID and on Linux the WebRTC ADM reports an *empty* GUID for every device.
 /// The lookup behind it walks the device list for the first equal GUID, so an
 /// empty one matches device 0 immediately, and it selects the default device and
 /// returns success.
 ///
-/// Indices are what the ADM actually keys on, and the same "PeerConnectionFactory"
-/// exposes them. "audio" is not read, but holding it is what guarantees the
+/// Indices are what the ADM actually keys on, and the same `PeerConnectionFactory`
+/// exposes them. `audio` is not read, but holding it is what guarantees the
 /// platform ADM these calls reach is still acquired.
 fn switch(audio: &PlatformAudio, kind: DeviceKind, index: usize) -> Result<()> {
     let _ = audio;
 
-    let index = u16::try_from(index).map_err(|_| anyhow!("device index {index} is out of range"))?;
+    let index =
+        u16::try_from(index).map_err(|_| anyhow!("device index {index} is out of range"))?;
 
     let runtime = LkRuntime::instance();
     let factory = runtime.pc_factory();
