@@ -1,14 +1,16 @@
 //! Audio device selection for calls.
 //!
 //! LiveKit's platform audio device module owns the microphone and speaker, so
-//! everything here is a thin, human-friendly layer over [`PlatformAudio`]:
+//! everything here is a thin, human-friendly layer over ["PlatformAudio"]:
 //! turning its device lists into something printable, resolving what the user
-//! typed at `:call device` into a device id, and remembering the choice.
+//! typed at ":call device" into a device id, and remembering the choice.
 //!
-//! Only compiled when the `voip` feature is enabled.
+//! Only compiled when the "voip" feature is enabled.
 
 use anyhow::{Result, anyhow};
-use livekit::{PlatformAudio, PlayoutDeviceId, RecordingDeviceId};
+use livekit::PlatformAudio;
+use livekit::rtc_engine::lk_runtime::LkRuntime;
+use livekit::webrtc::peer_connection_factory::native::PeerConnectionFactoryExt;
 use serde::{Deserialize, Serialize};
 
 /// Which end of the call a device sits on.
@@ -22,7 +24,7 @@ pub enum DeviceKind {
 }
 
 impl DeviceKind {
-    /// The word the user types for this kind at `:call device`.
+    /// The word the user types for this kind at ":call device".
     pub fn keyword(&self) -> &'static str {
         match self {
             DeviceKind::Microphone => "mic",
@@ -45,11 +47,11 @@ impl DeviceKind {
 /// and a name is what the user recognises if they ever open the file.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct DevicePreferences {
-    /// The chosen microphone, or `None` to use the system default.
+    /// The chosen microphone, or "None" to use the system default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub microphone: Option<String>,
 
-    /// The chosen speaker, or `None` to use the system default.
+    /// The chosen speaker, or "None" to use the system default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub speaker: Option<String>,
 }
@@ -77,16 +79,14 @@ impl DevicePreferences {
 /// One available audio device.
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct Device {
-    /// Position in the platform's device list.
+    /// Position in the platform's device list, and the only handle the audio
+    /// device module will actually act on. See ["switch"].
     index: usize,
 
     /// Human-readable name. Not necessarily unique: two identical USB
     /// microphones report the same name, so never use it to identify a device
     /// we have already picked out.
     name: String,
-
-    /// The platform's stable identifier for this device.
-    guid: String,
 }
 
 /// The devices of one kind.
@@ -95,25 +95,13 @@ fn enumerate(audio: &PlatformAudio, kind: DeviceKind) -> Vec<Device> {
         DeviceKind::Microphone => {
             audio
                 .recording_devices()
-                .map(|d| {
-                    Device {
-                        index: d.index,
-                        name: d.name,
-                        guid: d.id.as_str().to_string(),
-                    }
-                })
+                .map(|d| Device { index: d.index, name: d.name })
                 .collect()
         },
         DeviceKind::Speaker => {
             audio
                 .playout_devices()
-                .map(|d| {
-                    Device {
-                        index: d.index,
-                        name: d.name,
-                        guid: d.id.as_str().to_string(),
-                    }
-                })
+                .map(|d| Device { index: d.index, name: d.name })
                 .collect()
         },
     }
@@ -151,9 +139,9 @@ pub fn format_listing(audio: &PlatformAudio, prefs: &DevicePreferences) -> Strin
         }
     }
 
-    out.push_str("\nSelect with `:call device ");
+    out.push_str("\nSelect with ":call device ");
     out.push_str(DeviceKind::Microphone.keyword());
-    out.push_str(" <index|name>`.\n");
+    out.push_str(" <index|name>".\n");
 
     out
 }
@@ -161,13 +149,13 @@ pub fn format_listing(audio: &PlatformAudio, prefs: &DevicePreferences) -> Strin
 /// Find the device the user meant.
 ///
 /// A bare number picks by index; anything else matches a device name, exactly if
-/// possible and otherwise as a case-insensitive substring so that `:call device
-/// mic yeti` does the obvious thing.
+/// possible and otherwise as a case-insensitive substring so that ":call device
+/// mic yeti" does the obvious thing.
 fn resolve(audio: &PlatformAudio, kind: DeviceKind, spec: &str) -> Result<Device> {
     resolve_in(&enumerate(audio, kind), kind, spec)
 }
 
-/// The matching rules behind [`resolve`], over an already enumerated list.
+/// The matching ru les behind ["resolve"], over an already enumerated list.
 fn resolve_in(devices: &[Device], kind: DeviceKind, spec: &str) -> Result<Device> {
     if let Ok(wanted) = spec.parse::<usize>() {
         return devices
@@ -197,18 +185,59 @@ fn resolve_in(devices: &[Device], kind: DeviceKind, spec: &str) -> Result<Device
     Ok(device.clone())
 }
 
-/// Switch to a device by its platform identifier, hot-swapping it if a call is
-/// already running.
+/// Switch to a device by its position in the platform's device list,
+/// hot-swapping it if a call is already running.
 ///
-/// Identifiers rather than names, because two devices can share a name and
-/// picking the wrong one would silently change which microphone is live.
-fn switch(audio: &PlatformAudio, kind: DeviceKind, guid: &str) -> Result<()> {
+/// This goes to the audio device module directly rather than through
+/// ["PlatformAudio::switch_recording_device"], because that API takes a device
+/// GUID and on Linux the WebRTC ADM reports an *empty* GUID for every device.
+/// The lookup behind it walks the device list for the first equal GUID, so an
+/// empty one matches device 0 immediately, and it selects the default device and
+/// returns success.
+///
+/// Indices are what the ADM actually keys on, and the same "PeerConnectionFactory"
+/// exposes them. "audio" is not read, but holding it is what guarantees the
+/// platform ADM these calls reach is still acquired.
+fn switch(audio: &PlatformAudio, kind: DeviceKind, index: usize) -> Result<()> {
+    let _ = audio;
+
+    let index = u16::try_from(index).map_err(|_| anyhow!("device index {index} is out of range"))?;
+
+    let runtime = LkRuntime::instance();
+    let factory = runtime.pc_factory();
+
+    // Capture and playback have to be stopped before the device underneath them
+    // can change.
     match kind {
         DeviceKind::Microphone => {
-            audio.switch_recording_device(&RecordingDeviceId::from_unchecked_guid(guid))?
+            let running = factory.recording_is_initialized();
+
+            if running && !factory.stop_recording() {
+                return Err(anyhow!("could not stop capturing to change the microphone"));
+            }
+
+            if !factory.set_recording_device(index) {
+                return Err(anyhow!("the audio device module rejected microphone {index}"));
+            }
+
+            if running && !(factory.init_recording() && factory.start_recording()) {
+                return Err(anyhow!("could not start capturing from the new microphone"));
+            }
         },
         DeviceKind::Speaker => {
-            audio.switch_playout_device(&PlayoutDeviceId::from_unchecked_guid(guid))?
+            let running = factory.playout_is_initialized();
+
+            if running && !factory.stop_playout() {
+                return Err(anyhow!("could not stop playback to change the speaker"));
+            }
+
+            if !factory.set_playout_device(index) {
+                return Err(anyhow!("the audio device module rejected speaker {index}"));
+            }
+
+            if running && !(factory.init_playout() && factory.start_playout()) {
+                return Err(anyhow!("could not start playback on the new speaker"));
+            }
         },
     }
 
@@ -219,7 +248,7 @@ fn switch(audio: &PlatformAudio, kind: DeviceKind, guid: &str) -> Result<()> {
 pub fn select(audio: &PlatformAudio, kind: DeviceKind, spec: &str) -> Result<String> {
     let device = resolve(audio, kind, spec)?;
 
-    switch(audio, kind, &device.guid)?;
+    switch(audio, kind, device.index)?;
 
     Ok(device.name)
 }
@@ -241,7 +270,7 @@ pub fn apply(audio: &PlatformAudio, prefs: &DevicePreferences) {
             continue;
         };
 
-        if let Err(e) = switch(audio, kind, &device.guid) {
+        if let Err(e) = switch(audio, kind, device.index) {
             tracing::warn!("could not select the remembered {}: {e:#}", kind.keyword());
         }
     }
@@ -251,19 +280,15 @@ pub fn apply(audio: &PlatformAudio, prefs: &DevicePreferences) {
 mod tests {
     use super::*;
 
-    fn device(index: usize, name: &str, guid: &str) -> Device {
-        Device {
-            index,
-            name: name.to_string(),
-            guid: guid.to_string(),
-        }
+    fn device(index: usize, name: &str) -> Device {
+        Device { index, name: name.to_string() }
     }
 
     fn devices() -> Vec<Device> {
         vec![
-            device(0, "Built-in Audio Analog Stereo", "guid-builtin"),
-            device(1, "Yeti Stereo Microphone", "guid-yeti"),
-            device(2, "Yeti Nano", "guid-nano"),
+            device(0, "Built-in Audio Analog Stereo"),
+            device(1, "Yeti Stereo Microphone"),
+            device(2, "Yeti Nano"),
         ]
     }
 
@@ -281,14 +306,11 @@ mod tests {
         // Two identical microphones report the same name, so an index must
         // resolve to the device at that index and not to whichever one a later
         // name lookup would have found first.
-        let devices = vec![
-            device(0, "USB Microphone", "guid-first"),
-            device(1, "USB Microphone", "guid-second"),
-        ];
+        let devices = vec![device(0, "USB Microphone"), device(1, "USB Microphone")];
 
         let picked = resolve_in(&devices, DeviceKind::Microphone, "1").unwrap();
 
-        assert_eq!(picked.guid, "guid-second");
+        assert_eq!(picked.index, 1);
     }
 
     #[test]
