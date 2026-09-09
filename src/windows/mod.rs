@@ -12,10 +12,6 @@ use std::ops::Deref;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-#[cfg(feature = "voip")]
-use crate::base::CallAction;
-#[cfg(feature = "voip")]
-use matrix_sdk::ruma::OwnedUserId;
 use matrix_sdk::{
     RoomState as MatrixRoomState,
     room::{Room as MatrixRoom, RoomMember},
@@ -28,8 +24,6 @@ use matrix_sdk::{
         events::tag::{TagName, Tags},
     },
 };
-#[cfg(feature = "voip")]
-use std::collections::HashSet;
 
 use ratatui::{
     buffer::Buffer,
@@ -90,6 +84,9 @@ use self::verify::VerifyItem;
 use self::welcome::WelcomeState;
 use crate::message::MessageTimeStamp;
 use feruca::Collator;
+
+#[cfg(feature = "voip")]
+use crate::base::CallAction;
 
 pub mod room;
 pub mod verify;
@@ -319,7 +316,10 @@ fn tag_to_span(tag: &TagName, style: Style) -> Vec<Span<'_>> {
 ///
 /// [`active_room_call_participants`]: matrix_sdk::Room::active_room_call_participants
 #[cfg(feature = "voip")]
-pub fn call_participants(room_id: &RoomId, store: &ChatStore) -> Vec<OwnedUserId> {
+pub fn call_participants(
+    room_id: &RoomId,
+    store: &ChatStore,
+) -> Vec<matrix_sdk::ruma::OwnedUserId> {
     let Some(room) = store.worker.client.get_room(room_id) else {
         return Vec::new();
     };
@@ -332,7 +332,7 @@ pub fn call_participants(room_id: &RoomId, store: &ChatStore) -> Vec<OwnedUserId
         .then(|| store.worker.client.user_id().map(ToOwned::to_owned))
         .flatten();
 
-    let mut seen = HashSet::new();
+    let mut seen = std::collections::HashSet::new();
 
     room.active_room_call_participants()
         .into_iter()

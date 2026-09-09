@@ -37,8 +37,6 @@ use matrix_sdk::{
     send_queue::RoomSendQueueError,
 };
 
-#[cfg(feature = "voip")]
-use ratatui::style::{Color, Style};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -103,6 +101,9 @@ use crate::message::{
 use crate::worker::Requester;
 
 use super::scrollback::{Scrollback, ScrollbackState};
+
+#[cfg(feature = "voip")]
+use ratatui::style::{Color, Style};
 
 /// How many call participants the banner names before summarising the rest.
 ///

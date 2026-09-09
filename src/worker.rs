@@ -10,12 +10,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::time::{Duration, Instant};
-#[cfg(feature = "voip")]
-use {
-    matrix_sdk::deserialized_responses::EncryptionInfo,
-    matrix_sdk::ruma::MilliSecondsSinceUnixEpoch,
-    std::time::SystemTime,
-};
 
 use futures::{StreamExt, stream::FuturesUnordered};
 use gethostname::gethostname;
@@ -31,37 +25,6 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use tokio::task::JoinHandle;
 use tracing::{Instrument as _, error, warn};
 use url::Url;
-
-#[cfg(feature = "voip")]
-use crate::voip::devices::{self, DeviceKind};
-#[cfg(feature = "voip")]
-use crate::voip::livekit_session::{FIRST_KEY_INDEX, SessionConfig};
-#[cfg(feature = "voip")]
-use crate::voip::{
-    CallEncryptionKeysEvent,
-    CallManager,
-    CallNotice,
-    CallSession,
-    CallStatus,
-    IncomingCall,
-    KeyInbox,
-    OriginalSyncCallEncryptionKeysRoomEvent,
-    ReceivedCallKey,
-    matrix_rtc,
-};
-#[cfg(feature = "voip")]
-use livekit::PlatformAudio;
-#[cfg(feature = "voip")]
-use matrix_sdk::EncryptionState;
-#[cfg(feature = "voip")]
-use matrix_sdk::ruma::events::call::member::CallMemberEventContent;
-#[cfg(feature = "voip")]
-use matrix_sdk::ruma::events::rtc::decline::OriginalSyncRtcDeclineEvent;
-#[cfg(feature = "voip")]
-use matrix_sdk::ruma::events::rtc::notification::{
-    NotificationType,
-    OriginalSyncRtcNotificationEvent,
-};
 
 use matrix_sdk::{
     Client,
@@ -148,6 +111,35 @@ use crate::{
         RoomFetchStatus,
         RoomInfo,
     },
+};
+
+#[cfg(feature = "voip")]
+use {
+    crate::voip::devices::{self, DeviceKind},
+    crate::voip::livekit_session::{FIRST_KEY_INDEX, SessionConfig},
+    crate::voip::{
+        CallEncryptionKeysEvent,
+        CallManager,
+        CallNotice,
+        CallSession,
+        CallStatus,
+        IncomingCall,
+        KeyInbox,
+        OriginalSyncCallEncryptionKeysRoomEvent,
+        ReceivedCallKey,
+        matrix_rtc,
+    },
+    livekit::PlatformAudio,
+    matrix_sdk::EncryptionState,
+    matrix_sdk::deserialized_responses::EncryptionInfo,
+    matrix_sdk::ruma::MilliSecondsSinceUnixEpoch,
+    matrix_sdk::ruma::events::call::member::CallMemberEventContent,
+    matrix_sdk::ruma::events::rtc::decline::OriginalSyncRtcDeclineEvent,
+    matrix_sdk::ruma::events::rtc::notification::{
+        NotificationType,
+        OriginalSyncRtcNotificationEvent,
+    },
+    std::time::SystemTime,
 };
 
 const DEFAULT_ENCRYPTION_SETTINGS: EncryptionSettings = EncryptionSettings {

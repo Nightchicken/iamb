@@ -372,10 +372,10 @@ impl CallStatus {
 
     /// Record that the SFU connection is up and media is flowing.
     pub fn connected(&self) {
-        if let Ok(mut call) = self.0.lock() {
-            if let Some(call) = call.as_mut() {
-                call.connected = true;
-            }
+        if let Ok(mut call) = self.0.lock() &&
+            let Some(call) = call.as_mut()
+        {
+            call.connected = true;
         }
     }
 
@@ -388,19 +388,19 @@ impl CallStatus {
 
     /// Record the microphone mute state of the call in progress.
     pub fn set_muted(&self, muted: bool) {
-        if let Ok(mut call) = self.0.lock() {
-            if let Some(call) = call.as_mut() {
-                call.muted = muted;
-            }
+        if let Ok(mut call) = self.0.lock() &&
+            let Some(call) = call.as_mut()
+        {
+            call.muted = muted;
         }
     }
 
     /// Record who the SFU currently reports as speaking.
     pub fn set_speakers(&self, speakers: Vec<OwnedUserId>) {
-        if let Ok(mut call) = self.0.lock() {
-            if let Some(call) = call.as_mut() {
-                call.speakers = speakers;
-            }
+        if let Ok(mut call) = self.0.lock() &&
+            let Some(call) = call.as_mut()
+        {
+            call.speakers = speakers;
         }
     }
 }

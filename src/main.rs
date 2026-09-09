@@ -38,7 +38,6 @@ use rand::distr::Alphanumeric;
 use temp_dir::TempDir;
 use tokio::sync::Mutex as AsyncMutex;
 use tracing::Level;
-#[cfg(feature = "voip")]
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
@@ -1099,80 +1098,11 @@ async fn login_normal(
     Ok(())
 }
 
-/// Saved duplicate of the real stderr, so it can be restored after being
-/// redirected by [`silence_native_stderr`]. `-1` means "not redirected".
-#[cfg(all(unix, feature = "voip"))]
-static SAVED_STDERR_FD: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
-
-/// Send native stderr to `/dev/null` while the TUI owns the terminal.
-///
-/// LiveKit pulls in libwebrtc, and opening audio devices goes through ALSA;
-/// both log directly to file descriptor 2, bypassing our file-based tracing. On
-/// the alternate screen those writes land on top of the UI and corrupt it -
-/// most visibly when a call starts (device + libwebrtc init) and ends (teardown).
-/// [`restore_native_stderr`] puts the real stderr back, and is called from
-/// [`restore_tty`] before any panic message is printed, so crashes are still
-/// visible.
-#[cfg(all(unix, feature = "voip"))]
-fn silence_native_stderr() {
-    use std::os::fd::AsRawFd;
-    use std::sync::atomic::Ordering;
-
-    if SAVED_STDERR_FD.load(Ordering::SeqCst) != -1 {
-        return;
-    }
-
-    let Ok(devnull) = std::fs::OpenOptions::new().write(true).open("/dev/null") else {
-        return;
-    };
-
-    // SAFETY: `dup`/`dup2` on the process's own descriptors. We keep the saved
-    // descriptor in `SAVED_STDERR_FD` and close it in `restore_native_stderr`.
-    unsafe {
-        let saved = libc::dup(libc::STDERR_FILENO);
-        if saved == -1 {
-            return;
-        }
-        if libc::dup2(devnull.as_raw_fd(), libc::STDERR_FILENO) == -1 {
-            libc::close(saved);
-            return;
-        }
-        SAVED_STDERR_FD.store(saved, Ordering::SeqCst);
-    }
-}
-
-/// Restore the real stderr previously redirected by [`silence_native_stderr`].
-#[cfg(all(unix, feature = "voip"))]
-fn restore_native_stderr() {
-    use std::sync::atomic::Ordering;
-
-    let saved = SAVED_STDERR_FD.swap(-1, Ordering::SeqCst);
-    if saved == -1 {
-        return;
-    }
-
-    // SAFETY: `saved` is a descriptor we duplicated from stderr; move it back
-    // onto stderr and drop the duplicate.
-    unsafe {
-        libc::dup2(saved, libc::STDERR_FILENO);
-        libc::close(saved);
-    }
-}
-
-#[cfg(not(all(unix, feature = "voip")))]
-fn silence_native_stderr() {}
-
-#[cfg(not(all(unix, feature = "voip")))]
-fn restore_native_stderr() {}
-
 /// Set up the terminal for drawing the TUI, and getting additional info.
 fn setup_tty(settings: &ApplicationSettings, enable_enhanced_keys: bool) -> std::io::Result<()> {
     // Enable raw mode and enter the alternate screen.
     crossterm::terminal::enable_raw_mode()?;
     crossterm::execute!(stdout(), EnterAlternateScreen)?;
-
-    // Keep native library logging (libwebrtc, ALSA) off the alternate screen.
-    silence_native_stderr();
 
     if enable_enhanced_keys {
         // Enable the Kitty keyboard enhancement protocol for improved keypresses.
@@ -1216,10 +1146,6 @@ fn restore_tty(enable_enhanced_keys: bool, enable_mouse: bool) {
     );
 
     let _ = crossterm::terminal::disable_raw_mode();
-
-    // Now that we have left the alternate screen, put the real stderr back so
-    // that any panic message or exit output reaches the terminal.
-    restore_native_stderr();
 }
 
 async fn run(settings: ApplicationSettings) -> IambResult<()> {
@@ -1336,16 +1262,7 @@ fn setup_logging(settings: &ApplicationSettings) -> tracing_appender::non_blocki
         .with_env_filter(filter)
         .finish();
 
-    // `try_init` also installs the `log` compatibility bridge. LiveKit and
-    // libwebrtc log through `log` rather than `tracing` - including the sink
-    // carrying WebRTC's own C++ diagnostics - so without it everything either
-    // of them says is discarded, and a call that fails inside the media stack
-    // leaves nothing behind to debug with.
-    #[cfg(feature = "voip")]
-    subscriber.try_init().expect("setting default subscriber failed");
-
-    #[cfg(not(feature = "voip"))]
-    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+    subscriber.init();
 
     guard
 }

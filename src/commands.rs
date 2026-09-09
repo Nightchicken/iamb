@@ -19,8 +19,6 @@ use modalkit::{
     prelude::{MoveDir1D, OpenTarget},
 };
 
-#[cfg(feature = "voip")]
-use crate::base::CallAction;
 use crate::base::{
     CreateRoomFlags,
     CreateRoomType,
@@ -40,8 +38,9 @@ use crate::base::{
     SpaceAction,
     VerifyAction,
 };
+
 #[cfg(feature = "voip")]
-use crate::voip::devices::DeviceKind;
+use crate::{base::CallAction, voip::devices::DeviceKind};
 
 type ProgContext = CommandContext;
 type ProgResult = CommandResult<ProgramCommand>;

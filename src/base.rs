@@ -74,10 +74,6 @@ use matrix_sdk::{
     },
 };
 
-#[cfg(feature = "voip")]
-use crate::voip::devices::DeviceKind;
-#[cfg(feature = "voip")]
-use crate::voip::{CallStatus, IncomingCall};
 use modalkit::{
     actions::Action,
     editing::{
@@ -111,6 +107,9 @@ use crate::{
     preview::PreviewManager,
     worker::Requester,
 };
+
+#[cfg(feature = "voip")]
+use crate::voip::{CallStatus, IncomingCall, devices::DeviceKind};
 
 /// The set of characters used in different Matrix IDs.
 pub const MATRIX_ID_WORD: WordStyle = WordStyle::CharSet(is_mxid_char);
