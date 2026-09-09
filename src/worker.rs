@@ -898,9 +898,6 @@ pub enum WorkerTask {
     SpaceMembers(OwnedRoomId, ClientReply<IambResult<Vec<OwnedRoomId>>>),
     TypingNotice(OwnedRoomId),
     LoadImage(MediaSource, PreviewKind, Size, Arc<Picker>, Arc<Semaphore>),
-    Verify(VerifyAction, SasVerification, ClientReply<IambResult<EditInfo>>),
-    VerifyRequest(OwnedUserId, ClientReply<IambResult<EditInfo>>),
-    LoadImage(MediaSource, PreviewKind, ImagePreviewSize, Arc<Picker>, Arc<Semaphore>),
 
     #[cfg(feature = "voip")]
     CallJoin(OwnedRoomId, ClientReply<IambResult<EditInfo>>),
@@ -2357,73 +2354,6 @@ impl ClientWorker {
     async fn typing_notice(&mut self, room_id: OwnedRoomId) {
         if let Some(room) = self.client.get_room(room_id.as_ref()) {
             let _ = room.typing_notice(true).await;
-        }
-    }
-
-    async fn verify(&self, action: VerifyAction, sas: SasVerification) -> IambResult<EditInfo> {
-        match action {
-            VerifyAction::Accept => {
-                sas.accept().await.map_err(IambError::from)?;
-
-                Ok(Some(InfoMessage::from("Accepted verification request")))
-            },
-            VerifyAction::Confirm => {
-                if sas.is_done() || sas.is_cancelled() {
-                    let msg = "Can only confirm in-progress verifications!";
-                    let err = UIError::Failure(msg.into());
-
-                    return Err(err);
-                }
-
-                sas.confirm().await.map_err(IambError::from)?;
-
-                Ok(Some(InfoMessage::from("Confirmed verification")))
-            },
-            VerifyAction::Cancel => {
-                if sas.is_done() || sas.is_cancelled() {
-                    let msg = "Can only cancel in-progress verifications!";
-                    let err = UIError::Failure(msg.into());
-
-                    return Err(err);
-                }
-
-                sas.cancel().await.map_err(IambError::from)?;
-
-                Ok(Some(InfoMessage::from("Cancelled verification")))
-            },
-            VerifyAction::Mismatch => {
-                if sas.is_done() || sas.is_cancelled() {
-                    let msg = "Can only cancel in-progress verifications!";
-                    let err = UIError::Failure(msg.into());
-
-                    return Err(err);
-                }
-
-                sas.mismatch().await.map_err(IambError::from)?;
-
-                Ok(Some(InfoMessage::from("Cancelled verification")))
-            },
-        }
-    }
-
-    async fn verify_request(&self, user_id: OwnedUserId) -> IambResult<EditInfo> {
-        let enc = self.client.encryption();
-
-        match enc.get_user_identity(user_id.as_ref()).await.map_err(IambError::from)? {
-            Some(identity) => {
-                let methods = vec![VerificationMethod::SasV1];
-                let request = identity.request_verification_with_methods(methods);
-                let _req = request.await.map_err(IambError::from)?;
-                let info = format!("Sent verification request to {user_id}");
-
-                Ok(Some(InfoMessage::from(info)))
-            },
-            None => {
-                let msg = format!("Could not find identity information for {user_id}");
-                let err = UIError::Failure(msg);
-
-                Err(err)
-            },
         }
     }
 
