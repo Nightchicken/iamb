@@ -9,7 +9,9 @@
 //! subscribed remote track back through the system's output device, with echo
 //! cancellation, noise suppression, and automatic gain control applied by WebRTC.
 //! There is no capture loop or playback ring buffer in iamb at all: we hand
-//! LiveKit a `RtcAudioSource::Device` and it does the rest.
+//! LiveKit a [`RtcAudioSource::Device`] and it does the rest.
+//!
+//! [`RtcAudioSource::Device`]: livekit::webrtc::audio_source::RtcAudioSource::Device
 //!
 //! The session runs on the dedicated `iamb-voip` thread (see
 //! [`crate::voip::CallSession`]) inside that thread's own tokio runtime, so

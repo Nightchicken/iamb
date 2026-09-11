@@ -859,7 +859,8 @@ fn generate_call_key() -> Vec<u8> {
 #[cfg(feature = "voip")]
 async fn call_media_encrypted(room: &MatrixRoom) -> bool {
     match room.latest_encryption_state().await {
-        Ok(state) => !matches!(state, EncryptionState::NotEncrypted),
+        Ok(EncryptionState::NotEncrypted) => false,
+        Ok(_) => true,
         Err(e) => {
             warn!(
                 room_id = %room.room_id(),
@@ -1616,6 +1617,7 @@ impl ClientWorker {
         // Someone ringing the room (MSC4075). This is the explicit "pick up"
         // signal, as opposed to the `m.call.member` state above, which only says
         // a call exists.
+        // https://github.com/matrix-org/matrix-spec-proposals/pull/4075
         #[cfg(feature = "voip")]
         let _ = self.client.add_event_handler(
             move |ev: OriginalSyncRtcNotificationEvent,
@@ -1664,6 +1666,7 @@ impl ClientWorker {
                     // call. Skip a notification
                     let joined = locked
                         .application
+                        .worker
                         .call_status
                         .get()
                         .is_some_and(|call| *call.room_id == *room_id);
@@ -2371,10 +2374,6 @@ impl ClientWorker {
 
         let encrypted = call_media_encrypted(&room).await;
 
-        if !encrypted {
-            tracing::warn!(%room_id, "the room is unencrypted, so our media is too");
-        }
-
         let user_id = self
             .client
             .user_id()
@@ -2406,7 +2405,7 @@ impl ClientWorker {
             "opened the audio device module for a call"
         );
 
-        devices::apply(&audio, &self.settings.read_voip_devices());
+        devices::apply(&audio, &self.settings.voip_devices);
 
         let key = generate_call_key();
         let config = SessionConfig {
@@ -2428,6 +2427,7 @@ impl ClientWorker {
         //
         // `None` leaves `created_ts` for the server to stamp, which is what
         // MSC3401 asks of an initial join; refreshes read it back.
+        // https://github.com/matrix-org/matrix-spec-proposals/pull/3401
         let membership = matrix_rtc::publish_membership(&room, &user_id, &device_id, &focus, None)
             .await
             .map_err(call_error)?;
@@ -2605,20 +2605,18 @@ impl ClientWorker {
     #[cfg(feature = "voip")]
     fn call_devices(&self) -> IambResult<EditInfo> {
         let audio = self.audio_handle()?;
-        let prefs = self.settings.read_voip_devices();
+        let listing = devices::format_listing(&audio, &self.settings.voip_devices);
 
-        Ok(Some(InfoMessage::Pager(devices::format_listing(&audio, &prefs))))
+        Ok(Some(InfoMessage::Pager(listing)))
     }
 
     /// Choose an audio device, applying it now and remembering it for later.
     #[cfg(feature = "voip")]
-    fn call_set_device(&self, kind: DeviceKind, spec: String) -> IambResult<EditInfo> {
+    fn call_set_device(&mut self, kind: DeviceKind, spec: String) -> IambResult<EditInfo> {
         let audio = self.audio_handle()?;
         let name = devices::select(&audio, kind, &spec).map_err(call_error)?;
 
-        let mut prefs = self.settings.read_voip_devices();
-        prefs.set(kind, name.clone());
-        self.settings.write_voip_devices(&prefs).map_err(call_error)?;
+        self.settings.set_voip_device(kind, name.clone()).map_err(call_error)?;
 
         Ok(Some(InfoMessage::from(format!("Using {name:?} as the {}", kind.keyword()))))
     }

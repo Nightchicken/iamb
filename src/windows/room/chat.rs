@@ -1171,6 +1171,7 @@ impl StatefulWidget for Chat<'_> {
             let ours = self
                 .store
                 .application
+                .worker
                 .call_status
                 .get()
                 .filter(|call| *call.room_id == *state.id());

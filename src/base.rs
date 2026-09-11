@@ -109,7 +109,7 @@ use crate::{
 };
 
 #[cfg(feature = "voip")]
-use crate::voip::{CallStatus, IncomingCall, devices::DeviceKind};
+use crate::voip::{IncomingCall, devices::DeviceKind};
 
 /// The set of characters used in different Matrix IDs.
 pub const MATRIX_ID_WORD: WordStyle = WordStyle::CharSet(is_mxid_char);
@@ -2016,23 +2016,12 @@ pub struct ChatStore {
 
     /// Notifications that should be dismissed when the user opens the room.
     pub open_notifications: HashMap<OwnedRoomId, Vec<NotificationHandle>>,
-
-    /// The call we are currently joined to, if any.
-    ///
-    /// Read-only here: the worker owns this state and is its only writer.
-    #[cfg(feature = "voip")]
-    pub call_status: CallStatus,
 }
 
 impl ChatStore {
     /// Create a new [ChatStore].
     pub fn new(worker: Requester, settings: ApplicationSettings) -> Self {
         let previews = PreviewManager::new(&settings);
-
-        // Share the worker's handle rather than keeping a second copy of the
-        // call state: the worker is the only thing that can know it.
-        #[cfg(feature = "voip")]
-        let call_status = worker.call_status.clone();
 
         ChatStore {
             worker,
@@ -2052,8 +2041,6 @@ impl ChatStore {
             ring_bell: false,
             focused: true,
             open_notifications: Default::default(),
-            #[cfg(feature = "voip")]
-            call_status,
         }
     }
 

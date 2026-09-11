@@ -151,12 +151,12 @@ pub async fn discover_focus(
 /// `m.call.member` state events.
 ///
 /// Which membership wins is not arbitrary. Every participant, ours included,
-/// advertises `focus_selection: "oldest_membership"` in its `ActiveFocus`, which
-/// is a promise about how the active focus is chosen. Taking whichever focus the
-/// state store happened to hand back first breaks that promise the moment two
-/// participants prefer different focus: a federated call where each side's
-/// homeserver advertises its own SFU is exactly that case, and lands us alone
-/// in a LiveKit room while everyone else talks in another.
+/// advertises `focus_selection: "oldest_membership"` in its [`ActiveFocus`],
+/// which is a promise about how the active focus is chosen. Taking whichever
+/// focus the state store happened to hand back first breaks that promise the
+/// moment two participants prefer different focus: a federated call where
+/// each side's homeserver advertises its own SFU is exactly that case, and
+/// lands us alone in a LiveKit room while everyone else talks in another.
 async fn focus_from_memberships(room: &MatrixRoom) -> Option<LivekitFocus> {
     let events = room.get_state_events_static::<CallMemberEventContent>().await.ok()?;
 
@@ -240,11 +240,14 @@ async fn service_url_from_well_known(client: &Client, http: &reqwest::Client) ->
     Err(anyhow!("homeserver advertises no LiveKit focus"))
 }
 
-/// Trade a Matrix OpenID token for a LiveKit JWT at the focus's JWT service.
+/// Trade a Matrix OpenID token for a LiveKit JWT at the focus's JWT service
+/// ([MSC4195]).
 ///
 /// The service (`lk-jwt-service`) verifies the OpenID token against our
 /// homeserver and answers with the SFU URL and an access token scoped to the
 /// LiveKit room.
+///
+/// [MSC4195]: https://github.com/matrix-org/matrix-spec-proposals/pull/4195
 pub async fn request_sfu_credentials(
     client: &Client,
     http: &reqwest::Client,
@@ -333,7 +336,7 @@ fn membership_expires(created_ts: MilliSecondsSinceUnixEpoch) -> Duration {
 /// Announce that this device is in the room's call.
 ///
 /// Used both to join and to refresh. `created_ts` names the instant the
-/// membership chain began: `None` on the initial join, which is what MSC3401
+/// membership chain began: `None` on the initial join, which is what [MSC3401]
 /// requires - the server then stamps the event and `origin_server_ts` becomes
 /// the creation time. A refresh passes the value read back by
 /// [`our_membership_created_ts`] so the session keeps its original start while
@@ -348,6 +351,8 @@ fn membership_expires(created_ts: MilliSecondsSinceUnixEpoch) -> Duration {
 /// Returns the event ID of the published membership, which the call notification
 /// ([`send_call_notification`]) references so that receivers can tie the ring
 /// back to the session it announces.
+///
+/// [MSC3401]: https://github.com/matrix-org/matrix-spec-proposals/pull/3401
 pub async fn publish_membership(
     room: &MatrixRoom,
     user_id: &UserId,

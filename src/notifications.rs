@@ -136,7 +136,7 @@ pub async fn notify_call_started(room_name: &str, room_id: OwnedRoomId, store: &
     send_call_notification(&summary, None, false, store).await;
 }
 
-/// Announce that someone is calling and waiting for an answer (MSC4075).
+/// Announce that someone is calling and waiting for an answer ([MSC4075]).
 ///
 /// Unlike [`notify_call_started`] this fires even when the room is open and
 /// focused: a ring is a request for an answer, and silently dropping it because
@@ -146,6 +146,8 @@ pub async fn notify_call_started(room_name: &str, room_id: OwnedRoomId, store: &
 /// `ring` marks the notification urgent, which is what stops a compositor from
 /// expiring it after a few seconds - a ring the user missed because they were
 /// away from the keyboard is a ring that did not work.
+///
+/// [MSC4075]: https://github.com/matrix-org/matrix-spec-proposals/pull/4075
 #[cfg(feature = "voip")]
 pub async fn notify_incoming_call(
     room_name: &str,

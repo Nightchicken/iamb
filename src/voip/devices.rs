@@ -195,9 +195,11 @@ fn resolve_in(devices: &[Device], kind: DeviceKind, spec: &str) -> Result<Device
 /// empty one matches device 0 immediately, and it selects the default device and
 /// returns success.
 ///
-/// Indices are what the ADM actually keys on, and the same `PeerConnectionFactory`
-/// exposes them. `audio` is not read, but holding it is what guarantees the
-/// platform ADM these calls reach is still acquired.
+/// Indices are what the ADM actually keys on, and the same
+/// [`PeerConnectionFactory`] exposes them. `audio` is not read, but holding it
+/// is what guarantees the platform ADM these calls reach is still acquired.
+///
+/// [`PeerConnectionFactory`]: livekit::webrtc::peer_connection_factory::PeerConnectionFactory
 fn switch(audio: &PlatformAudio, kind: DeviceKind, index: usize) -> Result<()> {
     let _ = audio;
 

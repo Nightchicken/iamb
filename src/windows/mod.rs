@@ -85,9 +85,6 @@ use self::welcome::WelcomeState;
 use crate::message::MessageTimeStamp;
 use feruca::Collator;
 
-#[cfg(feature = "voip")]
-use crate::base::CallAction;
-
 pub mod room;
 pub mod verify;
 pub mod welcome;
@@ -314,7 +311,7 @@ fn tag_to_span(tag: &TagName, style: Style) -> Vec<Span<'_>> {
 /// several clients; this collapses them, because the banner and the room list
 /// both count people rather than sessions.
 ///
-/// [`active_room_call_participants`]: matrix_sdk::Room::active_room_call_participants
+/// [`active_room_call_participants`]: matrix_sdk::BaseRoom::active_room_call_participants
 #[cfg(feature = "voip")]
 pub fn call_participants(
     room_id: &RoomId,
@@ -327,7 +324,11 @@ pub fn call_participants(
     // Our retraction is only reflected here once the homeserver echoes it back,
     // which is a full round trip of being drawn in a call we have demonstrably
     // left. `CallStatus` knows immediately, so let it overrule the state event.
-    let joined = store.call_status.get().is_some_and(|call| *call.room_id == *room_id);
+    let joined = store
+        .worker
+        .call_status
+        .get()
+        .is_some_and(|call| *call.room_id == *room_id);
     let us = (!joined)
         .then(|| store.worker.client.user_id().map(ToOwned::to_owned))
         .flatten();
@@ -513,17 +514,17 @@ impl IambWindow {
     #[cfg(feature = "voip")]
     pub async fn call_command(
         &mut self,
-        act: CallAction,
+        act: crate::base::CallAction,
         _ctx: ProgramContext,
         store: &mut ProgramStore,
     ) -> IambResult<EditInfo> {
         // Audio devices are a property of the machine, not of a room, so these
         // work anywhere - including outside a call.
         match act {
-            CallAction::Devices => {
+            crate::base::CallAction::Devices => {
                 return store.application.worker.call_devices();
             },
-            CallAction::SetDevice(kind, spec) => {
+            crate::base::CallAction::SetDevice(kind, spec) => {
                 return store.application.worker.call_set_device(kind, spec);
             },
             _ => {},
@@ -543,7 +544,7 @@ impl IambWindow {
         // the store has - the worker cannot read it, since the UI holds the store
         // lock while blocking on the worker's reply.
         let pending = match act {
-            CallAction::Join | CallAction::Decline => {
+            crate::base::CallAction::Join | crate::base::CallAction::Decline => {
                 store
                     .application
                     .rooms
@@ -558,16 +559,16 @@ impl IambWindow {
         match act {
             // The worker owns the call and publishes its state, so none of these
             // touch the store: mirroring it here is what let the two drift apart.
-            CallAction::Join => store.application.worker.call_join(room_id),
-            CallAction::Hangup => store.application.worker.call_hangup(room_id),
-            CallAction::Decline => {
+            crate::base::CallAction::Join => store.application.worker.call_join(room_id),
+            crate::base::CallAction::Hangup => store.application.worker.call_hangup(room_id),
+            crate::base::CallAction::Decline => {
                 let Some(call) = pending else {
                     return Ok(Some(InfoMessage::from("No incoming call to decline")));
                 };
 
                 store.application.worker.call_decline(room_id, call.notification)
             },
-            CallAction::Mute(muted) => {
+            crate::base::CallAction::Mute(muted) => {
                 store.application.worker.call_mute(muted);
 
                 let msg = if muted {
@@ -578,7 +579,9 @@ impl IambWindow {
 
                 Ok(Some(InfoMessage::from(msg)))
             },
-            CallAction::Devices | CallAction::SetDevice(..) => unreachable!("handled above"),
+            crate::base::CallAction::Devices | crate::base::CallAction::SetDevice(..) => {
+                unreachable!("handled above")
+            },
         }
     }
 

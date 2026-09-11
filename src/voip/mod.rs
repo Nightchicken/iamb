@@ -5,11 +5,31 @@
 //!
 //! It is only compiled when the `voip` feature is enabled.
 //!
+//! [LiveKit]: https://livekit.io/
+//! [`Room`]: livekit::Room
+//!
+//! ## Specifications
+//!
+//! - [MSC4143](https://github.com/matrix-org/matrix-spec-proposals/pull/4143) -
+//!   MatrixRTC: sessions, memberships, and focus discovery.
+//! - [MSC4195](https://github.com/matrix-org/matrix-spec-proposals/pull/4195) -
+//!   the LiveKit transport for MatrixRTC.
+//! - [MSC4196](https://github.com/matrix-org/matrix-spec-proposals/pull/4196) -
+//!   the `m.call` voice and video application.
+//! - [MSC3401](https://github.com/matrix-org/matrix-spec-proposals/pull/3401) -
+//!   native group VoIP, where `m.call.member` comes from.
+//! - [MSC4075](https://github.com/matrix-org/matrix-spec-proposals/pull/4075) -
+//!   ringing with `m.rtc.notification`.
+//! - [MSC3757](https://github.com/matrix-org/matrix-spec-proposals/pull/3757) -
+//!   the `_{user_id}_{device_id}` membership state key.
+//! - [MSC4310](https://github.com/matrix-org/matrix-spec-proposals/pull/4310) -
+//!   declining with `m.rtc.decline`.
+//!
 //! ## Layout
 //!
 //! - [`mod@self`] - call session state machine and the types exchanged over
 //!   Matrix signaling ([`CallManager`], [`CallSession`], [`CallStatus`]).
-//! - [`livekit_session`] - the LiveKit `Room` connection: audio capture,
+//! - [`livekit_session`] - the LiveKit [`Room`] connection: audio capture,
 //!   playback, and end-to-end encryption key handling.
 //!
 //! ## Signaling overview
@@ -98,7 +118,7 @@ pub struct CallKeySession {
 
 impl CallKeySession {
     /// The session block describing a room's one and only call, matching the
-    /// `m.call.member` state published by `matrix_rtc::publish_membership`.
+    /// `m.call.member` state published by [`matrix_rtc::publish_membership`].
     pub fn room_call() -> Self {
         CallKeySession {
             application: "m.call".to_owned(),
@@ -289,11 +309,13 @@ pub struct IncomingCall {
 
 /// Whether a call notification's mentions address us.
 ///
-/// Mentions are how MSC4075 says who should be rung, so this is what keeps a
+/// Mentions are how [MSC4075] says who should be rung, so this is what keeps a
 /// call aimed at two specific people in a large room from ringing everybody. A
 /// notification carrying no mentions at all addresses nobody and is ignored:
 /// treating it as room-wide would make the absence of a target mean the widest
 /// possible target.
+///
+/// [MSC4075]: https://github.com/matrix-org/matrix-spec-proposals/pull/4075
 pub fn ring_is_for_us(mentions: Option<&Mentions>, user_id: &UserId) -> bool {
     match mentions {
         Some(mentions) => mentions.room || mentions.user_ids.contains(user_id),
@@ -504,8 +526,8 @@ pub struct CallSession {
 }
 
 impl CallSession {
-    /// Create a new session in the [`CallPhase::Connecting`] phase and spawn the
-    /// dedicated OS thread that drives the call's media work.
+    /// Create a new session and spawn the dedicated OS thread that drives the
+    /// call's media work.
     ///
     /// `notices` carries work the call thread cannot do itself back to the
     /// worker, which owns the Matrix client.

@@ -340,7 +340,7 @@ impl Application {
         {
             // Only whether the banner is drawn matters: its content changing
             // does not move anything else on the screen.
-            let banner = _store.application.call_status.get().is_some();
+            let banner = _store.application.worker.call_status.get().is_some();
 
             if self.last_call_banner != banner {
                 self.last_call_banner = banner;
@@ -1224,9 +1224,7 @@ async fn run(settings: ApplicationSettings) -> IambResult<()> {
     // Clean up the terminal on exit.
     restore_tty(enable_enhanced_keys, enable_mouse);
 
-    res?;
-
-    Ok(())
+    res.map_err(UIError::from)
 }
 
 fn setup_logging(settings: &ApplicationSettings) -> tracing_appender::non_blocking::WorkerGuard {
